@@ -329,17 +329,39 @@ export default async function handler(req: Request) {
             return new Response(response.text, { headers: { 'Content-Type': 'application/json' } });
         }
 
-        if (task === 'generateImage') {
-            const { story, studentName, comprehensionAnswers, colors } = payload as { story: string, studentName: string, comprehensionAnswers: string[], colors: Color[] };
-            const prompt = buildImagePrompt(story, studentName, comprehensionAnswers, colors);
-            const response = await ai.models.generateImages({
-                model: 'imagen-3.0-generate-002',
-                prompt: prompt,
-                config: { numberOfImages: 1, outputMimeType: 'image/jpeg' },
-            });
-            const imageBase64 = response.generatedImages && response.generatedImages.length > 0 ? response.generatedImages[0].image.imageBytes : null;
-            return new Response(JSON.stringify({ imageBase64 }), { headers: { 'Content-Type': 'application/json' } });
-        }
+       if (task === 'generateImage') {
+  const { story, studentName, comprehensionAnswers, colors } = payload as {
+    story?: string;
+    studentName?: string;
+    comprehensionAnswers?: string[];
+    colors?: Color[];
+  };
+
+  if (!story || !studentName || !comprehensionAnswers || !colors) {
+    return new Response(
+      JSON.stringify({ error: 'Missing required parameters for image generation' }),
+      { status: 400, headers: { 'Content-Type': 'application/json' } }
+    );
+  }
+
+  const prompt = buildImagePrompt(story, studentName, comprehensionAnswers, colors);
+
+  const response = await ai.models.generateImages({
+    model: 'imagen-3.0-generate-002',
+    prompt: prompt,
+    config: { numberOfImages: 1, outputMimeType: 'image/jpeg' },
+  });
+
+  const imageBase64 = response.generatedImages && response.generatedImages.length > 0
+    ? response.generatedImages[0].image.imageBytes
+    : null;
+
+  return new Response(JSON.stringify({ imageBase64 }), {
+    headers: { 'Content-Type': 'application/json' },
+  });
+}
+
+    
 
         // --- MATHEMATICAL TASKS ---
         if (task === 'generateExercise') {
