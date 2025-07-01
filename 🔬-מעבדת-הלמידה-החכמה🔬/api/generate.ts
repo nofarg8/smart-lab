@@ -1,4 +1,3 @@
-
 import { GoogleGenAI } from "@google/genai";
 import type { Student, LinguisticAnswers, Grade, ComprehensionData, MathTopic, MathExercise, OperationType, Color } from '../types';
 
@@ -8,7 +7,6 @@ if (!process.env.GEMINI_API_KEY) {
     throw new Error("GEMINI_API_KEY environment variable not set.");
 }
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
-
 
 // --- GENERAL HELPER FUNCTIONS ---
 const parseJsonResponse = <T,>(jsonString: string): T | null => {
@@ -26,20 +24,46 @@ const parseJsonResponse = <T,>(jsonString: string): T | null => {
     }
 };
 
-
 // --- LINGUISTIC HELPERS ---
 const gradeToTextComplexityMap: Record<Grade, string> = {
-    'ג': `Simple vocabulary, short sentences (5-8 words). Primarily present tense. Concrete descriptions. No complex conjunctions. Focus on direct actions and dialogues.`,
-    'ד': `Slightly more complex sentences (8-12 words), introduction of past tense, simple subordinate clauses (e.g., 'because', 'when'). More descriptive adjectives.`,
-    'ה': `More complex sentence structures, including varied tenses and clauses. Introduction of figurative language (simple similes). Vocabulary includes more abstract nouns.`,
-    'ו': `Complex and varied sentence structures. Rich vocabulary, including metaphors and more nuanced emotional language. Can handle shifts in perspective or time.`
+    'ג': `
+        - **Text Structure:** Single story or short informational text. Short paragraphs (3-5 sentences). One main title, no subtitles.
+        - **Sentences & Connectivity:** Simple or compound sentences. Very few conjunctions (e.g., "and then", "but").
+        - **Vocabulary & Knowledge:** Common, everyday words. No prior knowledge required.
+        - **Conceptual Depth & Interpretation:** Direct and clear meaning. A simple educational or emotional message.`,
+    'ד': `
+        - **Text Structure:** Slightly longer paragraphs. May include a title and subheadings. Clear narrative or descriptive structure.
+        - **Sentences & Connectivity:** Simple and some complex sentences. Initial use of varied conjunctions (e.g., "therefore", "also").
+        - **Vocabulary & Knowledge:** Slightly less common words, including adjectives and simple concepts. General background knowledge is helpful but not required.
+        - **Conceptual Depth & Interpretation:** One main meaning, with potential for deeper understanding. The message is clear but not always direct.`,
+    'ה': `
+        - **Text Structure:** Longer texts with paragraphs organized by ideas. Includes subheadings. Argumentative, comparative, or causal structure.
+        - **Sentences & Connectivity:** More complex sentences with pronouns and links (e.g., "as a result", "in contrast").
+        - **Vocabulary & Knowledge:** Abstract words, use of domain-specific concepts (e.g., scientific, civic). General understanding of the content area is needed.
+        - **Conceptual Depth & Interpretation:** More than one layer of meaning exists. Understanding requires abstraction, generalization, or inference.`,
+    'ו': `
+        - **Text Structure:** Complex texts, sometimes combining different genres. Complex paragraphs with clear internal logic. Sophisticated structure with subheadings.
+        - **Sentences & Connectivity:** Complex sentences with syntactic sub-structures. Wide and precise use of logical connections (e.g., "even though", "while").
+        - **Vocabulary & Knowledge:** Technical, professional, and sometimes very abstract words. Prior mastery of complex topics is required.
+        - **Conceptual Depth & Interpretation:** The message is not always explicit. Requires critical thinking, interpretation, and multi-step inference.`
+};
+
+const gradeToQuestionTypesMap: Record<Grade, string> = {
+    'ג': "Following Bloom's Taxonomy, focus on the lower levels: **Remembering** (facts from the story), **Understanding** (explain ideas or concepts, e.g., cause-and-effect), and identifying character emotions.",
+    'ד': "Following Bloom's Taxonomy, focus on **Remembering** and **Understanding** (sequence of events, character motivations) and introduce **Applying** (making connections, comparisons).",
+    'ה': "Following Bloom's Taxonomy, focus on higher-order thinking: **Analyzing** (character analysis, motivations), **Evaluating** (judging the story's message), and **Creating** (proposing alternatives). Include inference questions.",
+    'ו': "Following Bloom's Taxonomy, heavily focus on the highest levels: **Analyzing** (deep character analysis, complex themes), **Evaluating** (critical judgment of the message and character actions), and **Creating** (formulating new ideas based on the story). Questions should require multi-step inference and critical thinking."
 };
 
 const buildStoryPrompt = (student: Student, answers: LinguisticAnswers): string => {
-    const { grade, name } = student;
-    const { storyType, achievement, favoritePlace, roleModel, colors } = answers;
+    const { grade } = student;
 
-    const rules = { wordCount: '60-140 words', subheadings: 'no subheadings', paragraphStyle: '4-7 sentences long' };
+    const rules = {
+        wordCount: '60-140 words',
+        subheadings: 'no subheadings',
+        paragraphStyle: '4-7 sentences long'
+    };
+
     if (grade === 'ה') {
         rules.wordCount = '150-250 words';
         rules.subheadings = 'exactly 2 subheadings, formatted as Markdown (e.g., "## שם תת-כותרת")';
@@ -50,97 +74,136 @@ const buildStoryPrompt = (student: Student, answers: LinguisticAnswers): string 
         rules.paragraphStyle = '5-8 sentences long';
     }
 
-    const creativeGuideline = (grade === 'ג' || grade === 'ד')
-        ? `The main character of the story MUST be named ${name}. The story must be positive, encouraging, and directly incorporate the student's preferences below.`
-        : `The story should be more nuanced. While the main character must be named ${name}, the narrative can explore a small, age-appropriate challenge that is resolved by the end. The student's preferences should be woven into the story subtly and creatively.`;
-
+    const creativeGuideline = grade === 'ג' || grade === 'ד' ? `
+    **Creative Guidelines (CRITICAL):**
+    1.  **Thematic Inspiration, Not Literal Interpretation:** Your PRIMARY GOAL is a high-quality, coherent narrative. Use the student's preferences below as THEMATIC INSPIRATION ONLY. DO NOT force them into the plot literally. For example, if the student likes 'school', the theme could be about learning or friendship, but the story SHOULD NOT be set in a school unless it serves a high-quality narrative. Be creative.
+    2.  **Avoid Clichés:** You MUST avoid simplistic "try and try again" or generic "believe in yourself" plots. The conflict and resolution must be specific and concrete. Instead of saying a character "tried hard," describe *how* they approached the specific, unique challenge they faced.
+    3.  **Character:** Create a new, creative name for the main character (inspired by ${student.name}, but not the same). Decide the character's gender randomly and maintain consistency.` : `
+    **Creative Guidelines (CRITICAL):**
+    1.  **Deep Themes:** Use the student's preferences as a STARTING POINT to explore mature themes like personal growth, overcoming complex challenges, resilience, empathy, or understanding different perspectives.
+    2.  **Meaningful Message:** The story must have a meaningful, non-childish message. Avoid simplistic plots.
+    3.  **Relatable Character:** Create a new, creative name for the main character (inspired by ${student.name}). The character should be relatable and face a realistic, nuanced challenge. Decide the character's gender randomly.`;
+    
     return `
     You are a creative and sophisticated storyteller for Israeli students. Your audience is a child in grade ${grade}. Your story must be in Hebrew.
+
     **Pedagogical and Structural Requirements (NON-NEGOTIABLE):**
-    1.  **Text Complexity:** You MUST STRICTLY adhere to the following guidelines for grade ${grade}: ${gradeToTextComplexityMap[grade]}
+    1.  **Text Complexity:** You MUST STRICTLY adhere to the following guidelines for grade ${grade}:
+        ${gradeToTextComplexityMap[grade]}
     2.  **Story Length:** The entire story MUST be between ${rules.wordCount}.
     3.  **Structure:** The story must have ${rules.subheadings}.
     4.  **Paragraphs:** Paragraphs should be ${rules.paragraphStyle}.
+
     ${creativeGuideline}
+
     **Student Preferences for Thematic Inspiration:**
-    - Story Genre: ${storyType}
-    - A recent achievement to inspire the theme: "${achievement}"
-    - A favorite place to set the scene: ${favoritePlace}
-    - A favorite character/role model for character traits: ${roleModel}
-    - Preferred colors for atmosphere: ${colors.join(', ')}
+    - Story Genre: ${answers.storyType}
+    - A recent achievement to inspire the theme: "${answers.achievement}"
+    - A favorite place to set the scene: ${answers.favoritePlace}
+    - A favorite character/role model for character traits: ${answers.roleModel}
+    - Preferred colors for atmosphere: ${answers.colors.join(', ')}
+
     **Final Output Format:**
     Your response must be ONLY the story text in Hebrew. Do NOT include any introductory phrases, titles, or explanations. Start directly with the first word of the story.
     `;
 };
 
-const gradeToQuestionTypesMap: Record<Grade, string> = {
-    'ג': `1 multiple-choice question about a main character or event. 1 open-ended question asking for a feeling or a simple opinion (e.g., 'How did the character feel?').`,
-    'ד': `2 multiple-choice questions about plot details and character motivations. 1 open-ended question requiring a short inference (e.g., 'Why do you think...?').`,
-    'ה': `2 multiple-choice questions, one about plot and one about the meaning of a specific word from the text. 2 open-ended questions, one requiring summarizing a part of the story, and another asking for a personal connection.`,
-    'ו': `3 multiple-choice questions covering plot, character development, and theme. 2 open-ended questions, one requiring analysis of the main message, and another asking to predict what might happen next.`
-};
-
 const buildQuestionsPrompt = (story: string, grade: Grade): string => {
     return `
     Based on the provided Hebrew story, create comprehension questions for a student in grade ${grade}.
-    The output must be a single, valid JSON object.
-    Story:
+    Your response MUST be a single, valid JSON object.
+
+    **Instructions:**
+    1.  **Multiple Choice Questions (MCQs):**
+        - Generate exactly 3 unique MCQs.
+        - Each MCQ must have 4 options.
+        - The pedagogical focus of the MCQs MUST follow these guidelines for grade ${grade}: ${gradeToQuestionTypesMap[grade]}.
+
+    2.  **Open-Ended Questions:**
+        - Generate exactly 2 unique, thought-provoking open-ended questions.
+        - These questions MUST be based directly on the content and themes of the provided story.
+        - The cognitive level of these questions MUST ALSO follow the same pedagogical guidelines for grade ${grade} from Bloom's Taxonomy: ${gradeToQuestionTypesMap[grade]}. For example, for grade 'ו', they should require analysis, evaluation, or creation based on the story's specific events or characters.
+
+    **Output Format (JSON):**
+    {
+      "mcqs": [
+        { "question": "...", "options": ["...", "...", "...", "..."], "correctAnswer": "..." }
+      ],
+      "openQuestions": ["...", "..."]
+    }
+
+    **The Story:**
     ---
     ${story}
     ---
-    **Instructions:**
-    1.  **Language:** All questions and answers must be in Hebrew.
-    2.  **Quantity and Type:** You MUST generate questions according to these rules for grade ${grade}: ${gradeToQuestionTypesMap[grade]}
-    3.  **Multiple-Choice (MCQ) Rules:**
-        - Each MCQ must have exactly 4 options.
-        - One option must be clearly correct based on the story.
-        - The other three options (distractors) must be plausible but incorrect. They should be related to the story but wrong in a subtle way.
-    4.  **Open-Ended Questions:** These should encourage brief, thoughtful answers.
-    **JSON Output Structure:**
-    Return a single JSON object with this exact structure. Do not include any other text or markdown.
-    {
-      "mcqs": [
-        {
-          "question": "The question text in Hebrew.",
-          "options": ["Option 1", "Option 2", "Option 3", "Option 4"],
-          "correctAnswer": "The exact string of the correct option."
-        }
-      ],
-      "openQuestions": [
-        "First open-ended question text.",
-        "Second open-ended question text."
-      ]
-    }
     `;
 };
 
-const buildImagePrompt = (story: string, studentName: string, comprehensionAnswers: string[], colors: Color[]): string => {
+const detectGender = async (studentName: string, userAnswers: string[]): Promise<'male' | 'female' | 'unknown'> => {
+    const prompt = `
+    Analyze the following Hebrew name and text to determine the likely gender of the writer.
+    - Student's Name: "${studentName}"
+    - Student's Answers: "${userAnswers.join(' ')}"
+    
+    Respond with ONLY one of the following words: "male", "female", or "unknown".
+    Do not add any explanation. Base your analysis on common Hebrew names and grammatical gender in the answers.
+    `;
+    try {
+        const response = await ai.models.generateContent({
+            model: "gemini-2.5-flash-preview-04-17",
+            contents: prompt
+        });
+        const gender = response.text.trim().toLowerCase();
+        if (gender === 'male' || gender === 'female') {
+            return gender;
+        }
+        return 'unknown';
+    } catch (error) {
+        console.error("Error detecting gender, defaulting to 'unknown':", error);
+        return 'unknown';
+    }
+};
+
+const buildImagePrompt = async (story: string, studentName: string, comprehensionAnswers: string[], colors: Color[]): Promise<string> => {
     const artStyles = ['digital painting', 'watercolor', 'comic book style', 'anime style', 'storybook illustration'];
     const randomStyle = artStyles[Math.floor(Math.random() * artStyles.length)];
-    const colorPrompt = colors.length > 0 ? `The image should prominently feature the colors: ${colors.join(', ')}.` : '';
+    
+    const detectedGender = await detectGender(studentName, comprehensionAnswers);
+    let characterInstruction = "If the scene includes a person, make their gender ambiguous or gender-neutral. Or, show multiple characters of different genders.";
+    if (detectedGender === 'male') {
+        characterInstruction = "The main character in the scene should be a boy.";
+    } else if (detectedGender === 'female') {
+        characterInstruction = "The main character in the scene should be a girl.";
+    }
+
+    // The last two answers are the open-ended, personal ones.
+    const firstOpenAnswer = comprehensionAnswers[comprehensionAnswers.length - 2] || "a positive moment from the story";
+    const secondOpenAnswer = comprehensionAnswers[comprehensionAnswers.length - 1] || "a helpful action";
 
     return `
-    **Primary Goal:** Create a beautiful and imaginative image in a child-friendly ${randomStyle}.
-    This image is a reward for a child named ${studentName} after they read a personalized story and answered questions about it. The image should be uplifting, magical, and visually appealing to a child.
-    **Core Subject:** The main character of the story, ${studentName}.
-    **Story Context for Inspiration (summarized):**
-    ${story.substring(0, 1000)}...
-    **Student's Answers for Personalization:**
-    The student answered some questions after the story. Use these answers to add specific, meaningful details to the image.
-    Answers: "${comprehensionAnswers.join(', ')}"
-    **Visual Instructions:**
-    - **Style:** ${randomStyle}.
-    - **Mood:** Whimsical, joyful, and a little bit magical.
-    - **Composition:** The character, ${studentName}, should be the central focus. The background and other elements should reflect the story's setting and the student's answers.
-    - **Colors:** ${colorPrompt}
-    - **AVOID:** Do not include any text, letters, or numbers in the image. The image must be purely visual.
-    Create a single, beautiful image based on these instructions.
+    **Primary Goal:** Create a beautiful and imaginative image in a child-friendly ${randomStyle}. The image must be deeply personalized based on the student's unique interpretation of a story.
+
+    **Image Generation Methodology (Strictly Follow):**
+
+    **1. Core Subject (70% of visual focus):** The absolute center of the image must be a visual representation of the student's personal connection to the story, derived from their answers to two dynamically generated reflective questions.
+        - **Student's Reflections:** Visually synthesize the ideas from these two answers into one cohesive and imaginative scene. The answers are:
+          1. "${firstOpenAnswer}"
+          2. "${secondOpenAnswer}"
+        - **Character Gender:** ${characterInstruction}
+        This combined visual interpretation is the most important element of the image.
+
+    **2. Supporting Background & Atmosphere (30% of visual focus):** The background should provide context and atmosphere, but MUST NOT overpower the core subject.
+        - **Story Context:** Lightly base the environment on the original story's theme. The story was about: "${story.substring(0, 200)}...".
+        - **Color Palette:** The overall color scheme should be heavily influenced by the student's favorite colors: ${colors.join(', ')}.
+        - **Mood:** The mood must be joyful, magical, and celebratory of the student's learning achievement.
+
+    **ABSOLUTE CRITICAL CONSTRAINT:** The image MUST NOT, under any circumstances, contain any text, letters, words, or written language of any kind. This is the most important rule. The output must be a purely visual illustration, free of all text.
+
+    **Final Output Command:** Generate a single, high-quality image based on this weighted methodology.
     `;
 };
 
-
 // --- MATHEMATICAL HELPERS ---
-
 const gradeToMathCurriculumMap: Record<Grade, string> = {
     'ג': `
     - **Numbers & Operations:** Addition/subtraction up to 10,000. Two-digit multiplication. Simple division (with and without remainder). Rounding. Parentheses. Missing number problems.
@@ -167,15 +230,19 @@ const gradeToMathCurriculumMap: Record<Grade, string> = {
 };
 
 const getPromptForTopic = (topic: MathTopic, grade: Grade, isFollowUp: boolean = false, operationType?: OperationType, lastOperationTypeToAvoid?: OperationType): string => {
+    // Adding a random seed to encourage unique outputs from the model on each run.
     const randomSeed = Math.floor(Math.random() * 10000);
+
     let baseInstructions = `
     You are an expert math teacher for Israeli elementary school students.
     Your task is to generate a math problem, an SVG visualization for it, the correct answer, and TWO versions of a step-by-step explanation.
     The output MUST be a single JSON object.
     To ensure variety, use this random seed to create a unique problem: ${randomSeed}.
+
     **Pedagogical Constraints (Non-Negotiable):**
     You MUST strictly follow the curriculum for grade ${grade}:
     ${gradeToMathCurriculumMap[grade]}
+
     Problem details:
     - Language: Hebrew
     - Mathematical Symbols: For the 'problemText', you MUST use standard symbols: '+' for addition, '-' for subtraction, '×' for multiplication (NEVER 'x' or '*'), and '÷' for division (NEVER '/').
@@ -188,11 +255,13 @@ const getPromptForTopic = (topic: MathTopic, grade: Grade, isFollowUp: boolean =
         - For division with a remainder, the answer string MUST be in the format 'quotient,remainder' (e.g., "7,1").
         - For fractions, the answer string MUST be in the format 'numerator/denominator' (e.g., "1/3") or for mixed numbers as 'integer numerator/denominator' (e.g., "5 1/2").
         - For all other problems, it's a single number string.
+    
     Explanation Rules:
     - **Main Explanation:** You MUST provide a step-by-step 'explanation'. It should be formatted with numbered steps and Markdown bolding (**text**) for emphasis. This version MUST include the final answer.
     - **Explanation Hint:** You MUST ALSO provide an 'explanationHint'. This should be the EXACT same step-by-step explanation, but with the final numerical answer carefully REMOVED and replaced with a placeholder like '___'.
     - **Formatting Equations:** Any full line that is a mathematical equation (e.g., "200 - 120 = 80") MUST be on its own separate line. This is critical for display formatting.
     `;
+    
     let topicInstructions = '';
     switch (topic) {
         case '4_operations':
@@ -202,11 +271,12 @@ const getPromptForTopic = (topic: MathTopic, grade: Grade, isFollowUp: boolean =
             } else if (lastOperationTypeToAvoid) {
                 operationToRequest = `**Randomly choose ONE** of the four operations (addition, subtraction, multiplication, division), but it MUST NOT be **${lastOperationTypeToAvoid}**.`;
             }
+
             topicInstructions = `
             Topic: The Four Basic Arithmetic Operations.
             - ${operationToRequest}
             - **Variety and Creativity:** Create a problem that is NOT a trivial example. Use a diverse and challenging range of numbers suitable for the grade level. Ensure you generate different types of problems and avoid repetition.
-            - **Critical \`problemText\` Rule:** The 'problemText' MUST contain ONLY the mathematical expression itself (e.g., "25 × 14", "357 ÷ 8"). It MUST NOT contain any surrounding Hebrew words or questions like "כמה שווה?" or "פתרו:".
+            - **Critical \\problemText\\ Rule:** The 'problemText' MUST contain ONLY the mathematical expression itself (e.g., "25 × 14", "357 ÷ 8"). It MUST NOT contain any surrounding Hebrew words or questions like "כמה שווה?" or "פתרו:".
             - **Division Rule:** For division problems, you are STRICTLY FORBIDDEN from generating problems that involve decimal numbers. The problems must use whole numbers and may result in a remainder.
             - **Vertical Format:** For problems involving two multi-digit numbers (e.g., 25 × 14 or 123 + 45), format the problemText to be vertical, using newline characters. Example: "  25\\n× 14\\n----".
             - **Explanation for Multiplication:** If the explanation for multi-digit multiplication uses the distributive property (חוק הפילוג) instead of the standard vertical algorithm, it MUST start with the exact phrase "נפתור את התרגיל בעזרת: **חוק הפילוג**:" on its own line before the first numbered step.
@@ -217,7 +287,7 @@ const getPromptForTopic = (topic: MathTopic, grade: Grade, isFollowUp: boolean =
         case 'fractions':
             topicInstructions = `
             Topic: Fractions Practice.
-            - **CRITICAL \`problemText\` Rule:** The 'problemText' MUST contain ONLY the mathematical expression itself (e.g., "1/2 + 3/4" or "1 1/2 × 3/4") OR a direct conceptual question (e.g., "איזה מספר גדול יותר: 3/4 או 0.7?"). It MUST NOT contain any surrounding words, labels, or questions like "חשבו:" or "תרגיל 1:", and it MUST NOT contain invalid placeholders like '?' acting as an operator. This is a critical rule for display formatting.
+            - **CRITICAL \\problemText\\ Rule:** The 'problemText' MUST contain ONLY the mathematical expression itself (e.g., "1/2 + 3/4" or "1 1/2 × 3/4") OR a direct conceptual question (e.g., "איזה מספר גדול יותר: 3/4 או 0.7?"). It MUST NOT contain any surrounding words, labels, or questions like "חשבו:" or "תרגיל 1:", and it MUST NOT contain invalid placeholders like '?' acting as an operator. This is a critical rule for display formatting.
             - **Exercise Types & Variety:** You MUST ensure a high variety of problems and not just focus on difficult calculations. Use the full range of appropriate exercise types:
                 1.  **Calculation:** Simple and complex calculations appropriate for the grade (e.g., "1/4 + 2/4", "1 1/2 × 3/4").
                 2.  **Comparison:** For comparison problems, you MUST ask a direct question about which number is larger or smaller. You are STRICTLY FORBIDDEN from using the vague phrase "השוו בין...". Instead, you MUST use clear and direct questions. Examples of GOOD questions: "איזה מספר גדול יותר: 3/4 או 0.7?", "איזה מספר קטן יותר: 1/5 או 1/6?", "סמנו את הסימן הנכון: 1/2 __ 3/5 (<, >, =)". The problem text should be the full question. The answer in the JSON should be the correct number (if asked which is bigger/smaller) or the correct symbol.
@@ -229,14 +299,14 @@ const getPromptForTopic = (topic: MathTopic, grade: Grade, isFollowUp: boolean =
             `;
             if (grade === 'ג') {
                 topicInstructions += `
-                \n**NON-NEGOTIABLE RULE FOR GRADE ג':** You are FORBIDDEN from generating any problem that involves calculation or finding a 'part of a quantity'. The ONLY permitted problem type is showing a visual and asking the student to identify the fraction.
+                \\n**NON-NEGOTIABLE RULE FOR GRADE ג':** You are FORBIDDEN from generating any problem that involves calculation or finding a 'part of a quantity'. The ONLY permitted problem type is showing a visual and asking the student to identify the fraction.
                 - The 'problemText' MUST be a simple question like "איזה שבר מתאר החלק הצבוע בציור?".
                 - The SVG MUST be the core of the question, showing a clear shape with parts colored in.
                 - Example: Problem text is "What fraction is colored?", SVG shows a circle in 4 parts with 1 part colored, Answer is "1/4".
                 - Any other type of question for this grade is a failure to follow instructions.
                 `;
             } else {
-                 topicInstructions += `\n**Curriculum Focus for Grade ${grade}**: Based on the curriculum, create an appropriate exercise focusing on the varied types listed above, ensuring a mix of difficulty.`;
+                 topicInstructions += `\\n**Curriculum Focus for Grade ${grade}**: Based on the curriculum, create an appropriate exercise focusing on the varied types listed above, ensuring a mix of difficulty.`;
             }
             break;
         case 'average':
@@ -250,6 +320,7 @@ const getPromptForTopic = (topic: MathTopic, grade: Grade, isFollowUp: boolean =
             const wordProblemType = (grade === 'ה' || grade === 'ו') 
                 ? "Randomly select the type of word problem: either one using the 4 basic arithmetic operations, OR a problem about fractions (like finding a part of a quantity, 'חלק מכמות')."
                 : "The word problem MUST use one of the four basic arithmetic operations (addition, subtraction, multiplication, division).";
+
             topicInstructions = `
             Topic: Word Problems.
             - **Problem Type:** ${wordProblemType}
@@ -258,14 +329,17 @@ const getPromptForTopic = (topic: MathTopic, grade: Grade, isFollowUp: boolean =
             `;
             break;
     }
+
     return `
     ${baseInstructions}
     ${topicInstructions}
+
     SVG Visualization Rules:
     - Generate a single, valid SVG string. The SVG should be clean, clear, and pedagogically helpful.
     - Use friendly colors. Primary color for emphasis: #7371fc.
     - The SVG must be self-contained. The viewBox should be set appropriately.
     - Do not include an XML declaration.
+
     JSON Output Structure:
     Return a single, valid JSON object with this exact structure:
     {
@@ -281,12 +355,25 @@ const getPromptForTopic = (topic: MathTopic, grade: Grade, isFollowUp: boolean =
 
 const validateExercise = (exercise: any): boolean => {
     if (!exercise || !exercise.problemText || !exercise.answer || !exercise.visualizationSvg || !exercise.explanation) {
+        console.warn("Validation failed: AI response is missing required fields.", {
+            missing: {
+                problemText: !exercise.problemText,
+                answer: !exercise.answer,
+                visualizationSvg: !exercise.visualizationSvg,
+                explanation: !exercise.explanation,
+            }
+        });
         return false;
     }
+    
+    // This regex catches invalid use of '?' as an operator, e.g., "2/5 ? 3/7".
+    // It looks for a '?' that is preceded and followed by a digit or a slash, with optional whitespace.
     const invalidOperatorRegex = /[\d\/]\s*\?\s*[\d\/]/; 
     if (invalidOperatorRegex.test(exercise.problemText)) {
+        console.warn("Validation failed: AI generated a problem with an invalid '?' operator.", exercise.problemText);
         return false;
     }
+
     return true;
 };
 
@@ -301,91 +388,103 @@ export default async function handler(req: Request) {
 
         // --- LINGUISTIC TASKS ---
         if (task === 'generateStory') {
-            const { student, answers } = payload as { student: Student, answers: LinguisticAnswers };
-            const prompt = buildStoryPrompt(student, answers);
+            const { prompt, model, config } = payload as { 
+                prompt: string, 
+                model: string, 
+                config?: { tools?: any[] } 
+            };
             const response = await ai.models.generateContent({
-                model: "gemini-2.5-flash-preview-04-17",
+                model: model || "gemini-2.5-flash-preview-04-17",
                 contents: prompt,
-                config: { tools: [{ googleSearch: {} }] }
+                config: config || { tools: [{ googleSearch: {} }] }
             });
             return new Response(JSON.stringify({ text: response.text }), { headers: { 'Content-Type': 'application/json' } });
         }
 
         if (task === 'addNikud') {
-            const { text } = payload as { text: string };
-            const prompt = `Please add Hebrew vowel points (Nikud) to the following text. Return only the vocalized text.\n\n${text}`;
-            const response = await ai.models.generateContent({ model: "gemini-2.5-flash-preview-04-17", contents: prompt });
+            const { prompt, model } = payload as { prompt: string, model: string };
+            const response = await ai.models.generateContent({ 
+                model: model || "gemini-2.5-flash-preview-04-17", 
+                contents: prompt 
+            });
             return new Response(JSON.stringify({ text: response.text }), { headers: { 'Content-Type': 'application/json' } });
         }
 
         if (task === 'generateQuestions') {
-            const { story, grade } = payload as { story: string, grade: Grade };
-            const prompt = buildQuestionsPrompt(story, grade);
+            const { prompt, model, config } = payload as { 
+                prompt: string, 
+                model: string, 
+                config: { responseMimeType: string } 
+            };
             const response = await ai.models.generateContent({
-                model: "gemini-2.5-flash-preview-04-17",
+                model: model || "gemini-2.5-flash-preview-04-17",
                 contents: prompt,
-                config: { responseMimeType: 'application/json' }
+                config: config || { responseMimeType: 'application/json' }
             });
-            return new Response(response.text, { headers: { 'Content-Type': 'application/json' } });
+            return new Response(JSON.stringify({ text: response.text }), { headers: { 'Content-Type': 'application/json' } });
         }
 
-       if (task === 'generateImage') {
-  const { story, studentName, comprehensionAnswers, colors } = payload as {
-    story?: string;
-    studentName?: string;
-    comprehensionAnswers?: string[];
-    colors?: Color[];
-  };
+        if (task === 'detectGender') {
+            const { prompt, model } = payload as { prompt: string, model: string };
+            const response = await ai.models.generateContent({
+                model: model || "gemini-2.5-flash-preview-04-17",
+                contents: prompt
+            });
+            return new Response(JSON.stringify({ text: response.text }), { headers: { 'Content-Type': 'application/json' } });
+        }
 
-  if (!story || !studentName || !comprehensionAnswers || !colors) {
-    return new Response(
-      JSON.stringify({ error: 'Missing required parameters for image generation' }),
-      { status: 400, headers: { 'Content-Type': 'application/json' } }
-    );
-  }
+        if (task === 'generateImage') {
+            const { prompt, model, config } = payload as {
+                prompt: string;
+                model: string;
+                config: { numberOfImages: number; outputMimeType: string };
+            };
 
-  const prompt = buildImagePrompt(story, studentName, comprehensionAnswers, colors);
+            const response = await ai.models.generateImages({
+                model: model || 'imagen-3.0-generate-002',
+                prompt: prompt,
+                config: config || { numberOfImages: 1, outputMimeType: 'image/jpeg' },
+            });
 
-  const response = await ai.models.generateImages({
-    model: 'imagen-3.0-generate-002',
-    prompt: prompt,
-    config: { numberOfImages: 1, outputMimeType: 'image/jpeg' },
-  });
+            const imageBase64 = response.generatedImages && response.generatedImages.length > 0
+                ? response.generatedImages[0].image.imageBytes
+                : null;
 
-  const imageBase64 = response.generatedImages && response.generatedImages.length > 0
-    ? response.generatedImages[0].image.imageBytes
-    : null;
-
-  return new Response(JSON.stringify({ imageBase64 }), {
-    headers: { 'Content-Type': 'application/json' },
-  });
-}
-
-    
+            return new Response(JSON.stringify({ imageBase64 }), {
+                headers: { 'Content-Type': 'application/json' },
+            });
+        }
 
         // --- MATHEMATICAL TASKS ---
         if (task === 'generateExercise') {
-             const { topic, grade, operationType, lastOperationTypeToAvoid } = payload as { topic: MathTopic, grade: Grade, operationType?: OperationType, lastOperationTypeToAvoid?: OperationType };
-             const isFollowUp = !!operationType;
-             const maxRetries = 3;
-             for (let attempt = 1; attempt <= maxRetries; attempt++) {
-                const prompt = getPromptForTopic(topic, grade, isFollowUp, operationType, lastOperationTypeToAvoid);
-                 const response = await ai.models.generateContent({
-                    model: 'gemini-2.5-flash-preview-04-17',
-                    contents: prompt,
-                    config: { responseMimeType: 'application/json' }
+            const { prompt, model, config } = payload as { 
+                prompt: string; 
+                model: string; 
+                config: { responseMimeType: string } 
+            };
+            
+            const response = await ai.models.generateContent({
+                model: model,
+                contents: prompt,
+                config: config
+            });
+
+            const exerciseData = parseJsonResponse<{
+                problemText: string;
+                visualizationSvg: string;
+                answer: string;
+                explanation: string;
+                explanationHint: string;
+                operationType?: OperationType;
+            }>(response.text);
+            
+            if (exerciseData && validateExercise(exerciseData)) {
+                return new Response(JSON.stringify({ text: JSON.stringify(exerciseData) }), { 
+                    headers: { 'Content-Type': 'application/json' } 
                 });
-                
-                const exerciseData = parseJsonResponse<MathExercise>(response.text);
-                if (exerciseData && validateExercise(exerciseData)) {
-                     // The AI response is a string, but the client expects a JSON object.
-                     // The 'parseJsonResponse' already gives us the object, so we stringify it again.
-                     return new Response(JSON.stringify(exerciseData), { headers: { 'Content-Type': 'application/json' } });
-                }
-                 if (attempt >= maxRetries) {
-                    throw new Error("Failed to generate a valid exercise after all retries.");
-                 }
-             }
+            } else {
+                throw new Error("Failed to generate a valid exercise.");
+            }
         }
 
         return new Response(JSON.stringify({ error: 'Unknown task' }), { status: 400, headers: { 'Content-Type': 'application/json' } });
